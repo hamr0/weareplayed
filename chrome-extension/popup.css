@@ -126,6 +126,9 @@ h1 {
 }
 
 .breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 6px 10px;
   margin-bottom: 2px;
   background: #2a1a2a;
@@ -134,18 +137,17 @@ h1 {
   font-size: 13px;
 }
 
-.row-evidence {
-  color: #ccc;
-  font-style: italic;
-  font-size: 12px;
-  line-height: 1.4;
-  display: block;
+.row-label {
+  color: #e0e0e0;
+  font-size: 13px;
 }
 
-.breakdown-more {
-  font-size: 11px;
-  color: #666;
-  padding: 4px 10px;
+.row-count {
+  color: #888;
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: right;
 }
 
 /* Empty state */
