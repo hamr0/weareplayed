@@ -2,73 +2,118 @@
 
 (function () {
   var results = [];
+  var seen = {};
 
   function addResult(pattern, evidence) {
+    var key = pattern + ":" + evidence;
+    if (seen[key]) return;
+    seen[key] = true;
     results.push({ pattern: pattern, text: evidence });
+  }
+
+  // Gather visible text from an element and its children (max depth)
+  function visibleText(el, maxLen) {
+    var text = (el.innerText || el.textContent || "").trim();
+    return text.slice(0, maxLen || 200);
   }
 
   // --- 1. Countdown timers ---
   function scanCountdowns() {
-    var timePattern = /\d{1,2}\s*[:.]\s*\d{2}\s*[:.]\s*\d{2}/;
-    var urgencyWords = /\b(ends?\s+in|left|remaining|expires?|hurry|time\s*left|countdown)\b/i;
-    var els = document.querySelectorAll("*");
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
-      if (el.children.length > 3) continue;
-      var text = (el.textContent || "").trim();
-      if (text.length > 200 || text.length < 3) continue;
-      if (timePattern.test(text) && urgencyWords.test(text)) {
-        addResult("countdown", text.slice(0, 120));
+    // Strategy: find elements with timer-like classes/attributes, OR
+    // elements containing multiple adjacent digit groups
+    var timerSelectors = [
+      "[class*='timer']", "[class*='countdown']", "[class*='clock']",
+      "[class*='Timer']", "[class*='Countdown']", "[class*='Clock']",
+      "[id*='timer']", "[id*='countdown']", "[id*='clock']",
+      "[data-countdown]", "[data-timer]", "[data-end]", "[data-expire]"
+    ];
+    var timerEls = document.querySelectorAll(timerSelectors.join(","));
+    for (var i = 0; i < timerEls.length; i++) {
+      var text = visibleText(timerEls[i], 150);
+      if (text.length > 1) {
+        addResult("countdown", text);
+      }
+    }
+
+    // Also scan for time-like text patterns in visible elements
+    var allEls = document.querySelectorAll("span, div, p, li, td");
+    var timePattern = /\d{1,2}\s*[:.hH]\s*\d{2}\s*[:.mM]\s*\d{2}/;
+    var timeWords = /\b(hour|min|sec|hr|uur|min|dag|jour|heure|stunde|ora|tiempo)\b/i;
+    for (var j = 0; j < allEls.length; j++) {
+      var el = allEls[j];
+      if (el.children.length > 10) continue;
+      var t = visibleText(el, 200);
+      if (t.length < 3 || t.length > 200) continue;
+      if (timePattern.test(t) || (timeWords.test(t) && /\d/.test(t))) {
+        // Check parent context for urgency
+        var parentText = el.parentElement ? visibleText(el.parentElement, 200) : t;
+        addResult("countdown", parentText.slice(0, 120));
       }
     }
   }
 
   // --- 2. Pre-checked checkboxes ---
   function scanPrechecked() {
-    var susWords = /newsletter|marketing|subscribe|promo|opt.?in|updates|offers|agree|consent|plan|protection|warranty/i;
-    var checks = document.querySelectorAll("input[type='checkbox'][checked], input[type='checkbox']:checked");
+    var susWords = /newsletter|marketing|subscribe|promo|opt.?in|updates|offers|agree|consent|plan|protection|warranty|verzeker|nieuwsbrief|abonner|souscrire|inscri/i;
+
+    // Native checkboxes
+    var checks = document.querySelectorAll("input[type='checkbox']");
     for (var i = 0; i < checks.length; i++) {
       var cb = checks[i];
+      if (!cb.checked) continue;
       var label = findLabel(cb);
       if (label && susWords.test(label)) {
         addResult("prechecked", label.slice(0, 120));
       }
     }
+
+    // Custom checkboxes (aria)
+    var ariaChecked = document.querySelectorAll("[role='checkbox'][aria-checked='true'], [role='switch'][aria-checked='true']");
+    for (var j = 0; j < ariaChecked.length; j++) {
+      var text = visibleText(ariaChecked[j], 150);
+      if (!text) {
+        var parent = ariaChecked[j].closest("label, [class*='checkbox'], [class*='check']");
+        if (parent) text = visibleText(parent, 150);
+      }
+      if (text && susWords.test(text)) {
+        addResult("prechecked", text.slice(0, 120));
+      }
+    }
   }
 
   function findLabel(input) {
-    // Check for associated <label>
     if (input.id) {
-      var label = document.querySelector("label[for='" + input.id + "']");
+      var label = document.querySelector("label[for='" + CSS.escape(input.id) + "']");
       if (label) return label.textContent.trim();
     }
-    // Check parent label
     var parent = input.closest("label");
     if (parent) return parent.textContent.trim();
-    // Check next sibling text
-    var next = input.nextElementSibling || input.parentElement;
-    if (next) return next.textContent.trim().slice(0, 150);
+    // Nearby text
+    var container = input.closest("div, li, td, span");
+    if (container) return container.textContent.trim().slice(0, 150);
     return null;
   }
 
   // --- 3. Confirm-shaming ---
   function scanConfirmShaming() {
     var phrases = [
-      /no\s*,?\s*thanks?\s*,?\s*i/i,
+      /no\s*,?\s*thanks?\b/i,
+      /no\s*,?\s*i\s/i,
       /i\s+don'?t\s+want/i,
       /i'?ll\s+pass/i,
-      /no\s*,?\s*i\s+prefer/i,
-      /no\s*,?\s*i\s+don'?t/i,
-      /i\s+don'?t\s+like\s+(saving|money|deals|discounts)/i,
-      /i\s+don'?t\s+need/i,
-      /no\s*,?\s*i'?m\s+(good|fine|ok)/i,
-      /i\s+hate\s+(saving|money|deals)/i,
-      /i'?d\s+rather\s+(pay|spend)\s+(full|more)/i
+      /i\s+prefer\s+not/i,
+      /i\s+don'?t\s+(like|need|care)/i,
+      /i'?d\s+rather\s+(pay|spend|not)/i,
+      /maybe\s+later/i,
+      /not?\s+interested/i,
+      /nee\s*,?\s*bedankt/i,       // Dutch
+      /non\s*,?\s*merci/i,         // French
+      /nein\s*,?\s*danke/i         // German
     ];
-    var clickables = document.querySelectorAll("a, button, [role='button'], .btn, [class*='dismiss'], [class*='decline'], [class*='close']");
+    var clickables = document.querySelectorAll("a, button, [role='button'], [class*='btn'], [class*='dismiss'], [class*='decline'], [class*='close'], [class*='cancel'], [class*='reject'], [class*='skip']");
     for (var i = 0; i < clickables.length; i++) {
       var text = (clickables[i].textContent || "").trim();
-      if (text.length > 150 || text.length < 5) continue;
+      if (text.length > 100 || text.length < 4) continue;
       for (var p = 0; p < phrases.length; p++) {
         if (phrases[p].test(text)) {
           addResult("shaming", text.slice(0, 120));
@@ -82,30 +127,49 @@
   function scanFakeUrgency() {
     var phrases = [
       /only\s+\d+\s+left/i,
-      /\d+\s+people?\s+(viewing|watching|looking|bought)/i,
-      /limited\s+time/i,
+      /\d+\s+people?\s+(viewing|watching|looking|bought|checked)/i,
+      /limited\s+(time|stock|offer|quantity|edition)/i,
       /act\s+now/i,
       /selling\s+fast/i,
-      /almost\s+(gone|sold\s*out)/i,
-      /don'?t\s+miss\s+(out|this)/i,
+      /almost\s+(gone|sold\s*out|over)/i,
+      /don'?t\s+miss/i,
       /last\s+chance/i,
       /offer\s+ends/i,
-      /while\s+supplies?\s+last/i,
+      /while\s+(supplies?|stocks?)\s+last/i,
       /in\s+high\s+demand/i,
-      /\d+\s+(items?\s+)?left\s+in\s+stock/i
+      /\d+\s+(items?\s+)?left\s+in\s+stock/i,
+      /selling\s+out/i,
+      /flash\s+sale/i,
+      /ends?\s+in\s+\d/i,
+      /\d+\s+sold\s+in/i,
+      /\d+\s+sold\s+recently/i,
+      /\d+%\s+claimed/i,
+      /hot\s+sale/i,
+      /mega\s+sale/i,
+      // Dutch
+      /nog\s+\d+\s+(over|beschikbaar|op\s+voorraad)/i,
+      /bijna\s+(uitverkocht|op)/i,
+      /beperkte?\s+(tijd|voorraad|aanbieding)/i,
+      /\d+\s+mensen?\s+bekijken/i,
+      // French
+      /plus\s+que\s+\d+/i,
+      /vente\s+flash/i,
+      // Generic number + urgency
+      /\b\d+\s*\+?\s*(bought|sold|orders?|verkocht|besteld)\b/i
     ];
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    var seen = {};
-    while (walker.nextNode()) {
-      var text = walker.currentNode.textContent.trim();
-      if (text.length > 200 || text.length < 8) continue;
+
+    // Scan element innerText (catches text spread across child spans)
+    var candidates = document.querySelectorAll("span, div, p, li, td, a, strong, em, b, small, [class*='stock'], [class*='sold'], [class*='urgency'], [class*='scarcity'], [class*='badge'], [class*='hot'], [class*='sale'], [class*='left']");
+    var scanned = {};
+    for (var i = 0; i < candidates.length; i++) {
+      var el = candidates[i];
+      var text = visibleText(el, 200);
+      if (text.length > 200 || text.length < 3) continue;
+      if (scanned[text]) continue;
+      scanned[text] = true;
       for (var p = 0; p < phrases.length; p++) {
         if (phrases[p].test(text)) {
-          var snippet = text.slice(0, 120);
-          if (!seen[snippet]) {
-            seen[snippet] = true;
-            addResult("urgency", snippet);
-          }
+          addResult("urgency", text.slice(0, 120));
           break;
         }
       }
@@ -117,7 +181,7 @@
     var links = document.querySelectorAll("a");
     for (var i = 0; i < links.length; i++) {
       var text = (links[i].textContent || "").trim();
-      if (!/unsubscribe|opt.?out/i.test(text)) continue;
+      if (!/unsubscribe|opt.?out|afmelden|uitschrijven|d[eé]sabonner/i.test(text)) continue;
       var style = window.getComputedStyle(links[i]);
       var size = parseFloat(style.fontSize);
       var opacity = parseFloat(style.opacity);
@@ -166,13 +230,13 @@
   // --- Run all scans ---
   function scan() {
     results = [];
+    seen = {};
     scanCountdowns();
     scanPrechecked();
     scanConfirmShaming();
     scanFakeUrgency();
     scanHiddenUnsubscribe();
 
-    // Score: count unique pattern types, 20 pts each
     var types = {};
     var items = [];
     for (var i = 0; i < results.length; i++) {
@@ -200,10 +264,8 @@
     });
   }
 
-  // Wait for page to settle, then scan
-  setTimeout(scan, 1500);
+  setTimeout(scan, 2000);
 
-  // Re-scan after dynamic content loads
   var rescanTimer = null;
   var observer = new MutationObserver(function () {
     if (rescanTimer) clearTimeout(rescanTimer);
