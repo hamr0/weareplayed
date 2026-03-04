@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "weareplayed",
+  "version": "0.1.0",
+  "description": "Spot dark patterns — fake urgency, pre-checked boxes, confirm-shaming, and other tricks sites use to manipulate you.",
+  "permissions": ["storage"],
+  "action": {
+    "default_title": "weareplayed",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
