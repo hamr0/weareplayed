@@ -66,7 +66,12 @@ function buildVerdict(domain, score) {
   wrap.appendChild(domainEl);
 
   var scoreEl = el("div", "verdict-score");
-  scoreEl.textContent = score;
+  var scoreNum = el("span", "");
+  scoreNum.textContent = score;
+  var scoreMax = el("span", "verdict-max");
+  scoreMax.textContent = "/100";
+  scoreEl.appendChild(scoreNum);
+  scoreEl.appendChild(scoreMax);
   wrap.appendChild(scoreEl);
 
   var labelEl = el("div", "verdict-label");

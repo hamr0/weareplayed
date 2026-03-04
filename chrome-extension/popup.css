@@ -64,6 +64,12 @@ h1 {
   color: #e0e0e0;
 }
 
+.verdict-max {
+  font-size: 18px;
+  font-weight: 400;
+  color: #555;
+}
+
 .verdict-label {
   font-size: 11px;
   color: #666;
