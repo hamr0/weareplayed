@@ -4,7 +4,7 @@ var PATTERN_LABELS = {
   countdown: "Countdown timers",
   prechecked: "Pre-checked opt-ins",
   shaming: "Confirm-shaming",
-  urgency: "Fake urgency",
+  urgency: "Urgency & sales pressure",
   "hidden-unsub": "Hidden unsubscribe"
 };
 

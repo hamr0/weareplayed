@@ -123,43 +123,70 @@
     }
   }
 
-  // --- 4. Fake urgency ---
+  // --- 4. Fake urgency & sales pressure ---
   function scanFakeUrgency() {
     var phrases = [
+      // Scarcity
       /only\s+\d+\s+left/i,
+      /\d+\s+(items?\s+)?left\s+in\s+stock/i,
+      /almost\s+(gone|sold\s*out|over)/i,
+      /selling\s+(fast|out)/i,
+      /while\s+(supplies?|stocks?)\s+last/i,
+      /in\s+high\s+demand/i,
+      /low\s+stock/i,
+      // Social proof
       /\d+\s+people?\s+(viewing|watching|looking|bought|checked)/i,
+      /\d+\s*\+?\s*(bought|sold|orders?|verkocht|besteld)/i,
+      /\d+\s+sold\s+(in|recently)/i,
+      /\d+%\s+claimed/i,
+      // Time pressure
       /limited\s+(time|stock|offer|quantity|edition)/i,
       /act\s+now/i,
-      /selling\s+fast/i,
-      /almost\s+(gone|sold\s*out|over)/i,
       /don'?t\s+miss/i,
       /last\s+chance/i,
       /offer\s+ends/i,
-      /while\s+(supplies?|stocks?)\s+last/i,
-      /in\s+high\s+demand/i,
-      /\d+\s+(items?\s+)?left\s+in\s+stock/i,
-      /selling\s+out/i,
-      /flash\s+sale/i,
       /ends?\s+in\s+\d/i,
-      /\d+\s+sold\s+in/i,
-      /\d+\s+sold\s+recently/i,
-      /\d+%\s+claimed/i,
+      // Sales pressure
+      /flash\s+sale/i,
       /hot\s+sale/i,
-      /mega\s+sale/i,
+      /mega\s+(sale|deal)/i,
+      /big\s+sale/i,
+      /super\s+(sale|deal)/i,
+      /black\s+friday/i,
+      /cyber\s+monday/i,
+      /special\s+deal/i,
+      /welcome\s*deal/i,
+      /bundle\s*deal/i,
+      /top\s*deal/i,
+      /deal\s+of\s+the\s+day/i,
+      /\d+%\s*(off|korting|rabatt|remise)/i,
+      /save\s+\d+%/i,
+      /free\s+shipping/i,
+      /extra\s+\d+%/i,
       // Dutch
       /nog\s+\d+\s+(over|beschikbaar|op\s+voorraad)/i,
       /bijna\s+(uitverkocht|op)/i,
       /beperkte?\s+(tijd|voorraad|aanbieding)/i,
       /\d+\s+mensen?\s+bekijken/i,
+      /welkomst?\s*deal/i,
+      /bundel\s*deal/i,
+      /top\s*deal/i,
+      /gratis\s+verzending/i,
+      /\d+\s*€?\s*korting/i,
+      /€\s*\d+\s*korting/i,
       // French
       /plus\s+que\s+\d+/i,
       /vente\s+flash/i,
-      // Generic number + urgency
-      /\b\d+\s*\+?\s*(bought|sold|orders?|verkocht|besteld)\b/i
+      /offre\s+(sp[eé]ciale|limit[eé]e)/i,
+      /livraison\s+gratuite/i,
+      // German
+      /nur\s+noch\s+\d+/i,
+      /gratis\s+versand/i,
+      /sonder\s*angebot/i
     ];
 
     // Scan element innerText (catches text spread across child spans)
-    var candidates = document.querySelectorAll("span, div, p, li, td, a, strong, em, b, small, [class*='stock'], [class*='sold'], [class*='urgency'], [class*='scarcity'], [class*='badge'], [class*='hot'], [class*='sale'], [class*='left']");
+    var candidates = document.querySelectorAll("span, div, p, li, td, a, strong, em, b, small, [class*='stock'], [class*='sold'], [class*='urgency'], [class*='scarcity'], [class*='badge'], [class*='hot'], [class*='sale'], [class*='left'], [class*='deal'], [class*='Deal'], [class*='promo'], [class*='Promo'], [class*='discount'], [class*='Discount'], [class*='flash'], [class*='Flash'], [class*='offer'], [class*='Offer']");
     var scanned = {};
     for (var i = 0; i < candidates.length; i++) {
       var el = candidates[i];
