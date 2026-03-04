@@ -2,13 +2,19 @@
 
 var PATTERN_LABELS = {
   countdown: "Countdown timers",
+  discount: "Discount pressure",
+  scarcity: "Scarcity & social proof",
   prechecked: "Pre-checked opt-ins",
   shaming: "Confirm-shaming",
-  urgency: "Urgency & sales pressure",
   "hidden-unsub": "Hidden unsubscribe"
 };
 
-var PATTERN_ORDER = ["urgency", "prechecked", "shaming", "countdown", "hidden-unsub"];
+var SECTIONS = {
+  "Pressure tactics": ["countdown", "discount", "scarcity"],
+  "Deceptive design": ["prechecked", "shaming", "hidden-unsub"]
+};
+
+var SECTION_ORDER = ["Pressure tactics", "Deceptive design"];
 
 document.addEventListener("DOMContentLoaded", function () {
   chrome.runtime.sendMessage({ type: "getResults" }, function (data) {
@@ -23,12 +29,12 @@ function render(data) {
 
   if (!data || data.score === 0) {
     var domain = data ? stripDomain(data.domain) : "this site";
-    verdictEl.appendChild(buildVerdict(domain, 0, 0));
+    verdictEl.appendChild(buildVerdict(domain, 0));
     emptyEl.classList.remove("hidden");
     return;
   }
 
-  verdictEl.appendChild(buildVerdict(stripDomain(data.domain), data.score, data.total));
+  verdictEl.appendChild(buildVerdict(stripDomain(data.domain), data.score));
   buildBreakdown(breakdownEl, data.items);
   breakdownEl.classList.remove("hidden");
 }
@@ -37,21 +43,20 @@ function stripDomain(hostname) {
   return hostname.replace(/^www\./, "");
 }
 
-function buildVerdict(domain, score, total) {
-  var level;
-  var message;
+function buildVerdict(domain, score) {
+  var level, message;
   if (score === 0) {
     level = "clean";
     message = "No tricks here.";
-  } else if (score <= 30) {
+  } else if (score <= 20) {
     level = "warn";
-    message = "tricks to manipulate you.";
+    message = "Mild pressure tactics.";
   } else if (score <= 60) {
     level = "moderate";
-    message = "tricks to manipulate you.";
+    message = "This site is nudging you.";
   } else {
     level = "bad";
-    message = "tricks playing you hard.";
+    message = "This site is playing you.";
   }
 
   var wrap = el("div", "verdict verdict-" + level);
@@ -69,43 +74,50 @@ function buildVerdict(domain, score, total) {
   wrap.appendChild(labelEl);
 
   var msgEl = el("div", "verdict-message");
-  msgEl.textContent = total > 0 ? total + " " + message : message;
+  msgEl.textContent = message;
   wrap.appendChild(msgEl);
 
   return wrap;
 }
 
 function buildBreakdown(container, items) {
-  // Sort by pattern order
   var itemMap = {};
   for (var i = 0; i < items.length; i++) {
-    itemMap[items[i].pattern] = items[i];
+    itemMap[items[i].pattern] = items[i].count;
   }
 
-  for (var c = 0; c < PATTERN_ORDER.length; c++) {
-    var pattern = PATTERN_ORDER[c];
-    var item = itemMap[pattern];
-    if (!item) continue;
+  for (var s = 0; s < SECTION_ORDER.length; s++) {
+    var sectionName = SECTION_ORDER[s];
+    var patterns = SECTIONS[sectionName];
+    var hasAny = false;
+
+    for (var p = 0; p < patterns.length; p++) {
+      if (itemMap[patterns[p]]) { hasAny = true; break; }
+    }
+    if (!hasAny) continue;
 
     var section = el("div", "breakdown-section");
 
     var heading = el("div", "breakdown-heading");
-    var label = PATTERN_LABELS[pattern] || pattern;
-    heading.textContent = label + " (" + item.evidence.length + ")";
+    heading.textContent = sectionName;
     section.appendChild(heading);
 
-    for (var j = 0; j < item.evidence.length && j < 5; j++) {
-      var row = el("div", "breakdown-row");
-      var text = el("span", "row-evidence");
-      text.textContent = item.evidence[j];
-      row.appendChild(text);
-      section.appendChild(row);
-    }
+    for (var j = 0; j < patterns.length; j++) {
+      var pattern = patterns[j];
+      var count = itemMap[pattern];
+      if (!count) continue;
 
-    if (item.evidence.length > 5) {
-      var more = el("div", "breakdown-more");
-      more.textContent = "+" + (item.evidence.length - 5) + " more";
-      section.appendChild(more);
+      var row = el("div", "breakdown-row");
+
+      var label = el("span", "row-label");
+      label.textContent = PATTERN_LABELS[pattern];
+      row.appendChild(label);
+
+      var countEl = el("span", "row-count");
+      countEl.textContent = count;
+      row.appendChild(countEl);
+
+      section.appendChild(row);
     }
 
     container.appendChild(section);

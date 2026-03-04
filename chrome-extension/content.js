@@ -1,82 +1,113 @@
 "use strict";
 
 (function () {
-  var results = [];
+  var counts = {
+    countdown: 0,
+    discount: 0,
+    scarcity: 0,
+    prechecked: 0,
+    shaming: 0,
+    "hidden-unsub": 0
+  };
   var seen = {};
 
-  function addResult(pattern, evidence) {
-    var key = pattern + ":" + evidence;
+  function hit(pattern, key) {
     if (seen[key]) return;
     seen[key] = true;
-    results.push({ pattern: pattern, text: evidence });
+    counts[pattern]++;
   }
 
-  // Gather visible text from an element and its children (max depth)
-  function visibleText(el, maxLen) {
-    var text = (el.innerText || el.textContent || "").trim();
-    return text.slice(0, maxLen || 200);
-  }
-
-  // --- 1. Countdown timers ---
+  // --- 1. Countdown timers (structural: digits + colons, timer classes) ---
   function scanCountdowns() {
-    // Strategy: find elements with timer-like classes/attributes, OR
-    // elements containing multiple adjacent digit groups
-    var timerSelectors = [
-      "[class*='timer']", "[class*='countdown']", "[class*='clock']",
-      "[class*='Timer']", "[class*='Countdown']", "[class*='Clock']",
-      "[id*='timer']", "[id*='countdown']", "[id*='clock']",
-      "[data-countdown]", "[data-timer]", "[data-end]", "[data-expire]"
-    ];
-    var timerEls = document.querySelectorAll(timerSelectors.join(","));
+    // Class/attribute based
+    var timerSel = "[class*='timer'],[class*='countdown'],[class*='clock'],[class*='Timer'],[class*='Countdown'],[class*='Clock'],[id*='timer'],[id*='countdown'],[data-countdown],[data-timer],[data-end],[data-expire]";
+    var timerEls = document.querySelectorAll(timerSel);
     for (var i = 0; i < timerEls.length; i++) {
-      var text = visibleText(timerEls[i], 150);
-      if (text.length > 1) {
-        addResult("countdown", text);
+      var t = (timerEls[i].innerText || "").trim();
+      if (t.length > 0 && /\d/.test(t)) {
+        hit("countdown", "timer:" + i);
       }
     }
 
-    // Also scan for time-like text patterns in visible elements
-    var allEls = document.querySelectorAll("span, div, p, li, td");
-    var timePattern = /\d{1,2}\s*[:.hH]\s*\d{2}\s*[:.mM]\s*\d{2}/;
-    var timeWords = /\b(hour|min|sec|hr|uur|min|dag|jour|heure|stunde|ora|tiempo)\b/i;
-    for (var j = 0; j < allEls.length; j++) {
-      var el = allEls[j];
-      if (el.children.length > 10) continue;
-      var t = visibleText(el, 200);
-      if (t.length < 3 || t.length > 200) continue;
-      if (timePattern.test(t) || (timeWords.test(t) && /\d/.test(t))) {
-        // Check parent context for urgency
-        var parentText = el.parentElement ? visibleText(el.parentElement, 200) : t;
-        addResult("countdown", parentText.slice(0, 120));
+    // Text pattern: HH:MM:SS or similar digit groups
+    var timeRe = /\d{1,2}\s*[:．]\s*\d{2}\s*[:．]\s*\d{2}/;
+    var els = document.querySelectorAll("span, div, p");
+    for (var j = 0; j < els.length; j++) {
+      if (els[j].children.length > 5) continue;
+      var text = (els[j].innerText || "").trim();
+      if (text.length < 5 || text.length > 100) continue;
+      if (timeRe.test(text)) {
+        hit("countdown", "time:" + text.slice(0, 30));
       }
     }
   }
 
-  // --- 2. Pre-checked checkboxes ---
+  // --- 2. Discount pressure (structural: %, currency symbols, "sale" classes) ---
+  function scanDiscounts() {
+    var els = document.querySelectorAll("span, div, p, a, strong, b, em, small, [class*='sale'],[class*='Sale'],[class*='deal'],[class*='Deal'],[class*='discount'],[class*='Discount'],[class*='promo'],[class*='Promo'],[class*='flash'],[class*='Flash'],[class*='offer'],[class*='Offer'],[class*='price'],[class*='Price']");
+    var discountRe = /\d+\s*%\s*(off|korting|rabatt|remise|de\s+r[eé]duction)?/i;
+    var strikeRe = /line-through/;
+
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var text = (el.innerText || "").trim();
+      if (text.length < 2 || text.length > 150) continue;
+
+      // Percentage discount badges
+      if (discountRe.test(text)) {
+        hit("discount", "pct:" + text.slice(0, 30));
+        continue;
+      }
+
+      // Strikethrough prices (old price crossed out)
+      var style = null;
+      try { style = window.getComputedStyle(el); } catch (e) { continue; }
+      if (style && strikeRe.test(style.textDecorationLine || style.textDecoration || "")) {
+        if (/[\$€£¥₹]\s*\d|\d\s*[\$€£¥₹]/.test(text)) {
+          hit("discount", "strike:" + text.slice(0, 30));
+        }
+      }
+    }
+  }
+
+  // --- 3. Scarcity & social proof (structural) ---
+  function scanScarcity() {
+    var els = document.querySelectorAll("span, div, p, a, small, strong, [class*='stock'],[class*='sold'],[class*='left'],[class*='demand'],[class*='urgency'],[class*='scarcity'],[class*='badge']");
+    // Patterns that work in any language: "X sold", "X left", "X people", "X orders"
+    var numAction = /\b\d[\d,.]*\s*\+?\s*(sold|bought|orders?|verkocht|besteld|vendu|gekauft|left|remaining|viewing|watching|people|personen|personer)\b/i;
+    var stockRe = /\b(only|nog|nur|seulement)\s+\d+\s/i;
+
+    for (var i = 0; i < els.length; i++) {
+      var text = (els[i].innerText || "").trim();
+      if (text.length < 4 || text.length > 100) continue;
+      if (numAction.test(text) || stockRe.test(text)) {
+        hit("scarcity", "sc:" + text.slice(0, 30));
+      }
+    }
+  }
+
+  // --- 4. Pre-checked checkboxes ---
   function scanPrechecked() {
     var susWords = /newsletter|marketing|subscribe|promo|opt.?in|updates|offers|agree|consent|plan|protection|warranty|verzeker|nieuwsbrief|abonner|souscrire|inscri/i;
 
-    // Native checkboxes
     var checks = document.querySelectorAll("input[type='checkbox']");
     for (var i = 0; i < checks.length; i++) {
-      var cb = checks[i];
-      if (!cb.checked) continue;
-      var label = findLabel(cb);
+      if (!checks[i].checked) continue;
+      var label = findLabel(checks[i]);
       if (label && susWords.test(label)) {
-        addResult("prechecked", label.slice(0, 120));
+        hit("prechecked", "cb:" + i);
       }
     }
 
-    // Custom checkboxes (aria)
     var ariaChecked = document.querySelectorAll("[role='checkbox'][aria-checked='true'], [role='switch'][aria-checked='true']");
     for (var j = 0; j < ariaChecked.length; j++) {
-      var text = visibleText(ariaChecked[j], 150);
+      var text = (ariaChecked[j].innerText || "").trim();
       if (!text) {
         var parent = ariaChecked[j].closest("label, [class*='checkbox'], [class*='check']");
-        if (parent) text = visibleText(parent, 150);
+        if (parent) text = (parent.innerText || "").trim();
       }
       if (text && susWords.test(text)) {
-        addResult("prechecked", text.slice(0, 120));
+        hit("prechecked", "aria:" + j);
       }
     }
   }
@@ -88,13 +119,12 @@
     }
     var parent = input.closest("label");
     if (parent) return parent.textContent.trim();
-    // Nearby text
     var container = input.closest("div, li, td, span");
     if (container) return container.textContent.trim().slice(0, 150);
     return null;
   }
 
-  // --- 3. Confirm-shaming ---
+  // --- 5. Confirm-shaming ---
   function scanConfirmShaming() {
     var phrases = [
       /no\s*,?\s*thanks?\b/i,
@@ -106,9 +136,9 @@
       /i'?d\s+rather\s+(pay|spend|not)/i,
       /maybe\s+later/i,
       /not?\s+interested/i,
-      /nee\s*,?\s*bedankt/i,       // Dutch
-      /non\s*,?\s*merci/i,         // French
-      /nein\s*,?\s*danke/i         // German
+      /nee\s*,?\s*bedankt/i,
+      /non\s*,?\s*merci/i,
+      /nein\s*,?\s*danke/i
     ];
     var clickables = document.querySelectorAll("a, button, [role='button'], [class*='btn'], [class*='dismiss'], [class*='decline'], [class*='close'], [class*='cancel'], [class*='reject'], [class*='skip']");
     for (var i = 0; i < clickables.length; i++) {
@@ -116,96 +146,15 @@
       if (text.length > 100 || text.length < 4) continue;
       for (var p = 0; p < phrases.length; p++) {
         if (phrases[p].test(text)) {
-          addResult("shaming", text.slice(0, 120));
+          hit("shaming", "sh:" + i);
           break;
         }
       }
     }
   }
 
-  // --- 4. Fake urgency & sales pressure ---
-  function scanFakeUrgency() {
-    var phrases = [
-      // Scarcity
-      /only\s+\d+\s+left/i,
-      /\d+\s+(items?\s+)?left\s+in\s+stock/i,
-      /almost\s+(gone|sold\s*out|over)/i,
-      /selling\s+(fast|out)/i,
-      /while\s+(supplies?|stocks?)\s+last/i,
-      /in\s+high\s+demand/i,
-      /low\s+stock/i,
-      // Social proof
-      /\d+\s+people?\s+(viewing|watching|looking|bought|checked)/i,
-      /\d+\s*\+?\s*(bought|sold|orders?|verkocht|besteld)/i,
-      /\d+\s+sold\s+(in|recently)/i,
-      /\d+%\s+claimed/i,
-      // Time pressure
-      /limited\s+(time|stock|offer|quantity|edition)/i,
-      /act\s+now/i,
-      /don'?t\s+miss/i,
-      /last\s+chance/i,
-      /offer\s+ends/i,
-      /ends?\s+in\s+\d/i,
-      // Sales pressure
-      /flash\s+sale/i,
-      /hot\s+sale/i,
-      /mega\s+(sale|deal)/i,
-      /big\s+sale/i,
-      /super\s+(sale|deal)/i,
-      /black\s+friday/i,
-      /cyber\s+monday/i,
-      /special\s+deal/i,
-      /welcome\s*deal/i,
-      /bundle\s*deal/i,
-      /top\s*deal/i,
-      /deal\s+of\s+the\s+day/i,
-      /\d+%\s*(off|korting|rabatt|remise)/i,
-      /save\s+\d+%/i,
-      /free\s+shipping/i,
-      /extra\s+\d+%/i,
-      // Dutch
-      /nog\s+\d+\s+(over|beschikbaar|op\s+voorraad)/i,
-      /bijna\s+(uitverkocht|op)/i,
-      /beperkte?\s+(tijd|voorraad|aanbieding)/i,
-      /\d+\s+mensen?\s+bekijken/i,
-      /welkomst?\s*deals?/i,
-      /bundel\s*deals?/i,
-      /top\s*deals?/i,
-      /superaanbieding/i,
-      /uitverkoop/i,
-      /gratis\s+verzending/i,
-      /korting/i,
-      // French
-      /plus\s+que\s+\d+/i,
-      /vente\s+flash/i,
-      /offre\s+(sp[eé]ciale|limit[eé]e)/i,
-      /livraison\s+gratuite/i,
-      // German
-      /nur\s+noch\s+\d+/i,
-      /gratis\s+versand/i,
-      /sonder\s*angebot/i
-    ];
-
-    // Scan element innerText (catches text spread across child spans)
-    var candidates = document.querySelectorAll("span, div, p, li, td, a, strong, em, b, small, [class*='stock'], [class*='sold'], [class*='urgency'], [class*='scarcity'], [class*='badge'], [class*='hot'], [class*='sale'], [class*='left'], [class*='deal'], [class*='Deal'], [class*='promo'], [class*='Promo'], [class*='discount'], [class*='Discount'], [class*='flash'], [class*='Flash'], [class*='offer'], [class*='Offer']");
-    var scanned = {};
-    for (var i = 0; i < candidates.length; i++) {
-      var el = candidates[i];
-      var text = visibleText(el, 200);
-      if (text.length > 200 || text.length < 3) continue;
-      if (scanned[text]) continue;
-      scanned[text] = true;
-      for (var p = 0; p < phrases.length; p++) {
-        if (phrases[p].test(text)) {
-          addResult("urgency", text.slice(0, 120));
-          break;
-        }
-      }
-    }
-  }
-
-  // --- 5. Hidden unsubscribe ---
-  function scanHiddenUnsubscribe() {
+  // --- 6. Hidden unsubscribe ---
+  function scanHiddenUnsub() {
     var links = document.querySelectorAll("a");
     for (var i = 0; i < links.length; i++) {
       var text = (links[i].textContent || "").trim();
@@ -213,15 +162,13 @@
       var style = window.getComputedStyle(links[i]);
       var size = parseFloat(style.fontSize);
       var opacity = parseFloat(style.opacity);
-      var color = style.color;
-      var bg = findBackground(links[i]);
-      if (size < 10 || opacity < 0.5 || isLowContrast(color, bg)) {
-        addResult("hidden-unsub", "\"" + text.slice(0, 80) + "\" — " + Math.round(size) + "px, opacity " + opacity.toFixed(1));
+      if (size < 10 || opacity < 0.5 || isLowContrast(style.color, findBg(links[i]))) {
+        hit("hidden-unsub", "unsub:" + i);
       }
     }
   }
 
-  function findBackground(el) {
+  function findBg(el) {
     var node = el;
     while (node && node !== document.body) {
       var bg = window.getComputedStyle(node).backgroundColor;
@@ -232,76 +179,64 @@
   }
 
   function isLowContrast(fg, bg) {
-    var fgRgb = parseRgb(fg);
-    var bgRgb = parseRgb(bg);
-    if (!fgRgb || !bgRgb) return false;
-    var fgLum = luminance(fgRgb);
-    var bgLum = luminance(bgRgb);
-    var ratio = (Math.max(fgLum, bgLum) + 0.05) / (Math.min(fgLum, bgLum) + 0.05);
-    return ratio < 2.5;
+    var a = parseRgb(fg), b = parseRgb(bg);
+    if (!a || !b) return false;
+    var la = lum(a), lb = lum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05) < 2.5;
   }
 
-  function parseRgb(str) {
-    var m = str.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-    if (!m) return null;
-    return [parseInt(m[1]), parseInt(m[2]), parseInt(m[3])];
+  function parseRgb(s) {
+    var m = s.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    return m ? [+m[1], +m[2], +m[3]] : null;
   }
 
-  function luminance(rgb) {
-    var vals = rgb.map(function (v) {
-      v = v / 255;
-      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  function lum(rgb) {
+    var v = rgb.map(function (c) {
+      c = c / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
     });
-    return 0.2126 * vals[0] + 0.7152 * vals[1] + 0.0722 * vals[2];
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
   }
 
-  // --- Run all scans ---
+  // --- Run ---
   function safeScan(name, fn) {
-    try {
-      fn();
-    } catch (e) {
-      console.warn("[weareplayed] " + name + " failed:", e.message);
+    try { fn(); } catch (e) {
+      console.warn("[weareplayed] " + name + " error:", e.message);
     }
   }
 
   function scan() {
-    results = [];
+    for (var k in counts) counts[k] = 0;
     seen = {};
+
     safeScan("countdowns", scanCountdowns);
+    safeScan("discounts", scanDiscounts);
+    safeScan("scarcity", scanScarcity);
     safeScan("prechecked", scanPrechecked);
     safeScan("shaming", scanConfirmShaming);
-    safeScan("urgency", scanFakeUrgency);
-    safeScan("hidden-unsub", scanHiddenUnsubscribe);
+    safeScan("hidden-unsub", scanHiddenUnsub);
 
-    var types = {};
     var items = [];
-    for (var i = 0; i < results.length; i++) {
-      var r = results[i];
-      if (!types[r.pattern]) types[r.pattern] = [];
-      types[r.pattern].push(r.text);
+    var total = 0;
+    var patternCount = 0;
+    for (var p in counts) {
+      if (counts[p] > 0) {
+        items.push({ pattern: p, count: counts[p] });
+        total += counts[p];
+        patternCount++;
+      }
     }
 
-    var patternNames = Object.keys(types);
-    for (var j = 0; j < patternNames.length; j++) {
-      items.push({
-        pattern: patternNames[j],
-        evidence: types[patternNames[j]]
-      });
-    }
+    var score = Math.min(100, patternCount * 20);
 
-    var score = Math.min(100, patternNames.length * 20);
-
-    console.log("[weareplayed] Scan complete:", results.length, "findings, score:", score);
-    for (var k = 0; k < results.length; k++) {
-      console.log("[weareplayed]  ", results[k].pattern, "→", results[k].text);
-    }
+    console.log("[weareplayed] score:", score, "patterns:", patternCount, "total:", total, items);
 
     chrome.runtime.sendMessage({
       type: "scanResult",
       domain: location.hostname,
       items: items,
       score: score,
-      total: results.length
+      total: total
     });
   }
 
