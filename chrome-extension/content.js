@@ -168,12 +168,13 @@
       /bijna\s+(uitverkocht|op)/i,
       /beperkte?\s+(tijd|voorraad|aanbieding)/i,
       /\d+\s+mensen?\s+bekijken/i,
-      /welkomst?\s*deal/i,
-      /bundel\s*deal/i,
-      /top\s*deal/i,
+      /welkomst?\s*deals?/i,
+      /bundel\s*deals?/i,
+      /top\s*deals?/i,
+      /superaanbieding/i,
+      /uitverkoop/i,
       /gratis\s+verzending/i,
-      /\d+\s*€?\s*korting/i,
-      /€\s*\d+\s*korting/i,
+      /korting/i,
       // French
       /plus\s+que\s+\d+/i,
       /vente\s+flash/i,
@@ -255,14 +256,22 @@
   }
 
   // --- Run all scans ---
+  function safeScan(name, fn) {
+    try {
+      fn();
+    } catch (e) {
+      console.warn("[weareplayed] " + name + " failed:", e.message);
+    }
+  }
+
   function scan() {
     results = [];
     seen = {};
-    scanCountdowns();
-    scanPrechecked();
-    scanConfirmShaming();
-    scanFakeUrgency();
-    scanHiddenUnsubscribe();
+    safeScan("countdowns", scanCountdowns);
+    safeScan("prechecked", scanPrechecked);
+    safeScan("shaming", scanConfirmShaming);
+    safeScan("urgency", scanFakeUrgency);
+    safeScan("hidden-unsub", scanHiddenUnsubscribe);
 
     var types = {};
     var items = [];
@@ -281,6 +290,11 @@
     }
 
     var score = Math.min(100, patternNames.length * 20);
+
+    console.log("[weareplayed] Scan complete:", results.length, "findings, score:", score);
+    for (var k = 0; k < results.length; k++) {
+      console.log("[weareplayed]  ", results[k].pattern, "→", results[k].text);
+    }
 
     chrome.runtime.sendMessage({
       type: "scanResult",
