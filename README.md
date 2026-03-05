@@ -6,6 +6,8 @@ Every day you're nudged, rushed, shamed, and tricked into decisions you didn't p
 
 No AI, no cloud lookups — just structural pattern matching against the DOM. All processing is local.
 
+![weareplayed popup](store-assets/played.png)
+
 ## What it detects
 - **Countdown timers** — urgency clocks ticking down to nothing, often resetting on reload
 - **Discount pressure** — strikethrough prices and percentage badges designed to create FOMO
